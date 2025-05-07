@@ -19,6 +19,7 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123
 import os
 import time
 import math
+from time import perf_counter
 import pickle
 from contextlib import nullcontext
 
@@ -263,6 +264,18 @@ while True:
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+        # record validation perplexity
+        val_loss = losses['val']
+        val_ppl = math.exp(val_loss)
+        print(f"           val ppl {val_ppl:.2f}")
+        # quick inference-speed check (1 sample -> block_size new tokens)
+        Xtest, _ = get_batch('val')
+        idx = Xtest[:1].to(device)
+        start = perf_counter()
+        _ = raw_model.generate(idx, max_new_tokens=block_size)
+        end = perf_counter()
+        speed = block_size / (end - start)
+        print(f"           inference speed: {speed:.0f} tokens/sec")
         if wandb_log:
             wandb.log({
                 "iter": iter_num,
